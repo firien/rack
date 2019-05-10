@@ -572,6 +572,11 @@ class RackRequestTest < Minitest::Spec
     request.must_be :ssl?
   end
 
+  it "prevents scheme abuse" do
+    request = make_request(Rack::MockRequest.env_for("/", 'HTTP_X_FORWARDED_SCHEME' => 'a."><script>alert(1)</script>'))
+    request.scheme.must_equal 'http'
+  end
+
   it "parse cookies" do
     req = make_request \
       Rack::MockRequest.env_for("", "HTTP_COOKIE" => "foo=bar;quux=h&m")
@@ -1281,7 +1286,16 @@ EOF
     res.body.must_equal '2.2.2.3'
   end
 
-  it "regard local addresses as proxies" do
+  it "preserves ip for trusted proxy chain" do
+    mock = Rack::MockRequest.new(Rack::Lint.new(ip_app))
+    res = mock.get '/',
+      'HTTP_X_FORWARDED_FOR' => '192.168.0.11, 192.168.0.7',
+      'HTTP_CLIENT_IP' => '127.0.0.1'
+    res.body.must_equal '192.168.0.11'
+
+  end
+
+  it "regards local addresses as proxies" do
     req = make_request(Rack::MockRequest.env_for("/"))
     req.trusted_proxy?('127.0.0.1').must_equal 0
     req.trusted_proxy?('10.0.0.1').must_equal 0

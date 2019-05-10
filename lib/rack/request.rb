@@ -11,6 +11,8 @@ module Rack
   #   req.params["data"]
 
   class Request
+    SCHEME_WHITELIST = %w(https http).freeze
+
     def initialize(env)
       @params = nil
       super(env)
@@ -188,10 +190,8 @@ module Rack
           'https'
         elsif get_header(HTTP_X_FORWARDED_SSL) == 'on'
           'https'
-        elsif get_header(HTTP_X_FORWARDED_SCHEME)
-          get_header(HTTP_X_FORWARDED_SCHEME)
-        elsif get_header(HTTP_X_FORWARDED_PROTO)
-          get_header(HTTP_X_FORWARDED_PROTO).split(',')[0]
+        elsif forwarded_scheme
+          forwarded_scheme
         else
           get_header(RACK_URL_SCHEME)
         end
@@ -261,7 +261,7 @@ module Rack
 
         forwarded_ips = split_ip_addresses(get_header('HTTP_X_FORWARDED_FOR'))
 
-        return reject_trusted_ip_addresses(forwarded_ips).last || get_header("REMOTE_ADDR")
+        return reject_trusted_ip_addresses(forwarded_ips).last || forwarded_ips.first || get_header("REMOTE_ADDR")
       end
 
       # The media type (type/subtype) portion of the CONTENT_TYPE header
@@ -478,6 +478,19 @@ module Rack
 
       def reject_trusted_ip_addresses(ip_addresses)
         ip_addresses.reject { |ip| trusted_proxy?(ip) }
+      end
+
+      def forwarded_scheme
+        scheme_headers = [
+          get_header(HTTP_X_FORWARDED_SCHEME),
+          get_header(HTTP_X_FORWARDED_PROTO).to_s.split(',')[0]
+        ]
+
+        scheme_headers.each do |header|
+          return header if SCHEME_WHITELIST.include?(header)
+        end
+
+        nil
       end
     end
 
